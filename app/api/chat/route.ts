@@ -1,67 +1,51 @@
-import { OpenAI } from "openai";
+import { openai } from "@ai-sdk/openai";
+import { streamText } from "ai";
 import { Pinecone } from "@pinecone-database/pinecone";
-import { AIProviders, Chat, Intention } from "@/types";
-import { IntentionModule } from "@/modules/intention";
-import { ResponseModule } from "@/modules/response";
-import { PINECONE_INDEX_NAME } from "@/configuration/pinecone";
-import Anthropic from "@anthropic-ai/sdk";
 
-export const maxDuration = 60;
+// Pinecone setup
+const pinecone = new Pinecone({ apiKey: process.env.PINECONE_API_KEY });
+const index = pinecone.index("your-index-name"); // Change to your Pinecone index name
 
-// Get API keys
-const pineconeApiKey = process.env.PINECONE_API_KEY;
-const openaiApiKey = process.env.OPENAI_API_KEY;
-const anthropicApiKey = process.env.ANTHROPIC_API_KEY;
-const fireworksApiKey = process.env.FIREWORKS_API_KEY;
-
-// Check if API keys are set
-if (!pineconeApiKey) {
-  throw new Error("PINECONE_API_KEY is not set");
-}
-if (!openaiApiKey) {
-  throw new Error("OPENAI_API_KEY is not set");
-}
-
-// Initialize Pinecone
-const pineconeClient = new Pinecone({
-  apiKey: pineconeApiKey,
-});
-const pineconeIndex = pineconeClient.Index(PINECONE_INDEX_NAME);
-
-// Initialize Providers
-const openaiClient = new OpenAI({
-  apiKey: openaiApiKey,
-});
-const anthropicClient = new Anthropic({
-  apiKey: anthropicApiKey,
-});
-const fireworksClient = new OpenAI({
-  baseURL: "https://api.fireworks.ai/inference/v1",
-  apiKey: fireworksApiKey,
-});
-const providers: AIProviders = {
-  openai: openaiClient,
-  anthropic: anthropicClient,
-  fireworks: fireworksClient,
-};
-
-async function determineIntention(chat: Chat): Promise<Intention> {
-  return await IntentionModule.detectIntention({
-    chat: chat,
-    openai: providers.openai,
-  });
-}
+export const maxDuration = 30;
 
 export async function POST(req: Request) {
-  const { chat } = await req.json();
+  const { messages } = await req.json();
 
-  const intention: Intention = await determineIntention(chat);
+  // Extract the latest user message
+  const userMessage = messages[messages.length - 1].content;
 
-  if (intention.type === "question") {
-    return ResponseModule.respondToQuestion(chat, providers, pineconeIndex);
-  } else if (intention.type === "hostile_message") {
-    return ResponseModule.respondToHostileMessage(chat, providers);
-  } else {
-    return ResponseModule.respondToRandomMessage(chat, providers);
-  }
+  // Generate an embedding for the user's query
+  const embeddingResponse = await openai.embeddings.create({
+    model: "text-embedding-ada-002",
+    input: userMessage,
+  });
+
+  const userEmbedding = embeddingResponse.data[0].embedding;
+
+  // Query Pinecone for relevant context
+  const pineconeResponse = await index.query({
+    vector: userEmbedding,
+    topK: 5, // Adjust for more or fewer retrieved documents
+    includeMetadata: true,
+  });
+
+  // Format retrieved documents as context
+  const retrievedDocuments = pineconeResponse.matches
+    .map((match) => match.metadata?.text)
+    .join("\n\n");
+
+  // Add retrieved context to the chat messages
+  const augmentedMessages = [
+    { role: "system", content: "Use the provided context to answer the user's question." },
+    { role: "system", content: `Context: ${retrievedDocuments}` },
+    ...messages, // User + assistant messages
+  ];
+
+  // Send query to OpenAI with the retrieved context
+  const result = streamText({
+    model: openai("gpt-4o-mini"),
+    messages: augmentedMessages,
+  });
+
+  return result.toDataStreamResponse();
 }
