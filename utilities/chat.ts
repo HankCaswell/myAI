@@ -93,11 +93,14 @@ export async function searchForChunksUsingEmbedding(
   pineconeIndex: any
 ): Promise<Chunk[]> {
   try {
+    console.log("Querying Pinecone with embedding:", embedding);
     const { matches } = await pineconeIndex.query({
       vector: embedding,
       topK: QUESTION_RESPONSE_TOP_K,
       includeMetadata: true,
     });
+
+    console.log("Pinecone Response:", matches);
 
     return matches.map((match: any) =>
       chunkSchema.parse({
