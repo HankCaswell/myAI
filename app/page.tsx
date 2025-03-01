@@ -4,6 +4,10 @@ import ChatInput from "@/components/chat/input";
 import ChatMessages from "@/components/chat/messages";
 import useApp from "@/hooks/use-app";
 import ChatHeader from "@/components/chat/header";
+import '../public/tailwind.css' 
+import '../styles/globals.css'
+import { DisplayMessage, LoadingIndicator } from "@/types";
+
 
 export default function Chat() {
   const {
@@ -21,7 +25,7 @@ export default function Chat() {
       <ChatHeader clearMessages={clearMessages} />
       <div className="flex justify-center items-center h-screen">
         <div className="flex flex-col max-w-screen-lg w-full h-full p-5">
-          <ChatMessages messages={messages} indicatorState={indicatorState} />
+          <ChatMessages messages={messages}  />
         </div>
       </div>
       <ChatInput

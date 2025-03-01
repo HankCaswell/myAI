@@ -1,4 +1,12 @@
 /** @type {import('next').NextConfig} */
-const nextConfig = {};
-
-export default nextConfig;
+const nextConfig = {
+    experimental: {
+      appDir: true,
+    },
+    webpack: (config) => {
+      return config; // ✅ Keep Webpack unmodified to prevent issues
+    },
+  };
+  
+  export default nextConfig;
+  
